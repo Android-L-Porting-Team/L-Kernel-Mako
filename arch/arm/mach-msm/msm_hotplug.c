@@ -20,7 +20,14 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/cpufreq.h>
-#include <linux/fb.h>
+#ifdef CONFIG_LCD_NOTIFY
+#include <linux/lcd_notify.h>
+#elif defined(CONFIG_POWERSUSPEND)
+#include <linux/powersuspend.h>
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+#include <linux/earlysuspend.h>
+#endif
+#include <linux/mutex.h>
 #include <linux/input.h>
 #include <linux/math64.h>
 #include <linux/kernel_stat.h>
@@ -32,12 +39,15 @@
 #define START_DELAY		HZ * 20
 #define MIN_INPUT_INTERVAL	150 * 1000L
 #define DEFAULT_HISTORY_SIZE	10
-#define DEFAULT_DOWN_LOCK_DUR	500
-#define DEFAULT_BOOST_LOCK_DUR	2500 * 1000L
-#define DEFAULT_NR_CPUS_BOOSTED	2
+#define DEFAULT_DOWN_LOCK_DUR	1000
+#define DEFAULT_BOOST_LOCK_DUR	4000 * 1000L
+#define DEFAULT_NR_CPUS_BOOSTED	1
 #define DEFAULT_MIN_CPUS_ONLINE	1
 #define DEFAULT_MAX_CPUS_ONLINE	NR_CPUS
-#define DEFAULT_FAST_LANE_LOAD	95
+#define DEFAULT_FAST_LANE_LOAD	120
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+#define DEFAULT_SUSPEND_DEFER_TIME	10
+#endif
 
 static unsigned int debug = 0;
 module_param_named(debug_mask, debug, uint, 0644);
@@ -49,7 +59,11 @@ do { 				\
 } while (0)
 
 static struct cpu_hotplug {
-	unsigned int enabled;
+	unsigned int msm_enabled;
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	unsigned int suspended;
+	unsigned int suspend_defer_time;
+#endif
 	unsigned int target_cpus;
 	unsigned int min_cpus_online;
 	unsigned int max_cpus_online;
@@ -61,13 +75,22 @@ static struct cpu_hotplug {
 	unsigned int fast_lane_load;
 	struct work_struct up_work;
 	struct work_struct down_work;
-	struct work_struct suspend_work;
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	struct delayed_work suspend_work;
 	struct work_struct resume_work;
+	struct mutex msm_hotplug_mutex;
+#ifdef CONFIG_LCD_NOTIFY
 	struct notifier_block notif;
+#endif
+#endif
 } hotplug = {
-	.enabled = HOTPLUG_ENABLED,
+	.msm_enabled = HOTPLUG_ENABLED,
 	.min_cpus_online = DEFAULT_MIN_CPUS_ONLINE,
 	.max_cpus_online = DEFAULT_MAX_CPUS_ONLINE,
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	.suspended = 0,
+	.suspend_defer_time = DEFAULT_SUSPEND_DEFER_TIME,
+#endif
 	.cpus_boosted = DEFAULT_NR_CPUS_BOOSTED,
 	.down_lock_dur = DEFAULT_DOWN_LOCK_DUR,
 	.boost_lock_dur = DEFAULT_BOOST_LOCK_DUR,
@@ -78,9 +101,12 @@ static struct workqueue_struct *hotplug_wq;
 static struct delayed_work hotplug_work;
 
 static u64 last_boost_time;
+static unsigned int default_update_rates[] = { DEFAULT_UPDATE_RATE };
 
 static struct cpu_stats {
-	unsigned int update_rate;
+	unsigned int *update_rates;
+	int nupdate_rates;
+	spinlock_t update_rates_lock;
 	unsigned int *load_hist;
 	unsigned int hist_size;
 	unsigned int hist_cnt;
@@ -91,7 +117,8 @@ static struct cpu_stats {
 	unsigned int cur_max_load;
 	struct mutex stats_mutex;
 } stats = {
-	.update_rate = DEFAULT_UPDATE_RATE,
+	.update_rates = default_update_rates,
+	.nupdate_rates = ARRAY_SIZE(default_update_rates),
 	.hist_size = DEFAULT_HISTORY_SIZE,
 	.min_cpus = 1,
 	.total_cpus = NR_CPUS
@@ -262,10 +289,10 @@ struct loads_tbl {
 
 static struct loads_tbl loads[] = {
 	LOAD_SCALE(400, 0),
-	LOAD_SCALE(65, 0),
-	LOAD_SCALE(120, 50),
-	LOAD_SCALE(190, 100),
-	LOAD_SCALE(410, 170),
+	LOAD_SCALE(80, 0),
+	LOAD_SCALE(140, 50),
+	LOAD_SCALE(220, 120),
+	LOAD_SCALE(410, 210),
 	LOAD_SCALE(0, 0),
 };
 
@@ -329,7 +356,7 @@ static void __ref cpu_up_work(struct work_struct *work)
 	target = hotplug.target_cpus;
 
 	for_each_cpu_not(cpu, cpu_online_mask) {
-		if (target == num_online_cpus())
+		if (target <= num_online_cpus())
 			break;
 		if (cpu == 0)
 			continue;
@@ -349,22 +376,29 @@ static void cpu_down_work(struct work_struct *work)
 		if (cpu == 0)
 			continue;
 		lowest_cpu = get_lowest_load_cpu();
-		if (lowest_cpu > 0) {
-			if (check_down_lock(cpu))
-				break;
-			cpu_down(lowest_cpu);
-		}
-		if (target == num_online_cpus())
+		if (check_down_lock(cpu))
+			break;
+		cpu_down(lowest_cpu);
+		if (target >= num_online_cpus())
 			break;
 	}
 }
 
 static void online_cpu(unsigned int target)
 {
-	if (!hotplug.enabled)
+	unsigned int online_cpus;
+
+	if (!hotplug.msm_enabled)
 		return;
 
-	if (stats.total_cpus == num_online_cpus())
+	online_cpus = num_online_cpus();
+
+	/* 
+	 * Do not online more CPUs if max_cpus_online reached 
+	 * and cancel online task if target already achieved.
+	 */
+	if (target <= online_cpus ||
+		online_cpus >= hotplug.max_cpus_online)
 		return;
 
 	hotplug.target_cpus = target;
@@ -373,13 +407,20 @@ static void online_cpu(unsigned int target)
 
 static void offline_cpu(unsigned int target)
 {
-	unsigned int online_cpus = num_online_cpus();
+	unsigned int online_cpus;
 	u64 now;
 
-	if (!hotplug.enabled)
+	if (!hotplug.msm_enabled)
 		return;
 
-	if (online_cpus == stats.min_cpus)
+	online_cpus = num_online_cpus();
+
+	/* 
+	 * Do not offline more CPUs if min_cpus_online reached
+	 * and cancel offline task if target already achieved.
+	 */
+	if (target >= online_cpus || 
+		online_cpus <= hotplug.min_cpus_online)
 		return;
 
 	now = ktime_to_us(ktime_get());
@@ -391,16 +432,39 @@ static void offline_cpu(unsigned int target)
 	queue_work_on(0, hotplug_wq, &hotplug.down_work);
 }
 
-static int reschedule_hotplug_work(void)
+static unsigned int load_to_update_rate(unsigned int load)
 {
-	return queue_delayed_work_on(0, hotplug_wq, &hotplug_work,
-				     stats.update_rate);
+	int i, ret;
+	unsigned long flags;
+
+	spin_lock_irqsave(&stats.update_rates_lock, flags);
+
+	for (i = 0; i < stats.nupdate_rates - 1 &&
+			load >= stats.update_rates[i+1]; i += 2)
+		;
+
+	ret = stats.update_rates[i];
+	spin_unlock_irqrestore(&stats.update_rates_lock, flags);
+	return ret;
+}
+
+static void reschedule_hotplug_work(void)
+{
+	queue_delayed_work_on(0, hotplug_wq, &hotplug_work,
+			      msecs_to_jiffies(load_to_update_rate(
+					       stats.cur_avg_load)));
 }
 
 static void msm_hotplug_work(struct work_struct *work)
 {
-	unsigned int cur_load, online_cpus, target = 0;
-	unsigned int i;
+	unsigned int i, target = 0;
+
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	if (hotplug.suspended) {
+		dprintk("%s: suspended.\n", MSM_HOTPLUG);
+		return;
+	}
+#endif
 
 	update_load_stats();
 
@@ -410,23 +474,20 @@ static void msm_hotplug_work(struct work_struct *work)
 		goto reschedule;
 	}
 
-	cur_load = stats.cur_avg_load;
-	online_cpus = stats.online_cpus;
-
 	/* If number of cpus locked, break out early */
 	if (hotplug.min_cpus_online == num_possible_cpus()) {
-		if (online_cpus != hotplug.min_cpus_online)
+		if (stats.online_cpus != hotplug.min_cpus_online)
 			online_cpu(hotplug.min_cpus_online);
 		goto reschedule;
 	} else if (hotplug.max_cpus_online == stats.min_cpus) {
-		if (online_cpus != hotplug.max_cpus_online)
+		if (stats.online_cpus != hotplug.max_cpus_online)
 			offline_cpu(hotplug.max_cpus_online);
 		goto reschedule;
 	}
 
 	for (i = stats.min_cpus; loads[i].up_threshold; i++) {
-		if (cur_load <= loads[i].up_threshold
-		    && cur_load > loads[i].down_threshold) {
+		if (stats.cur_avg_load <= loads[i].up_threshold
+		    && stats.cur_avg_load > loads[i].down_threshold) {
 			target = i;
 			break;
 		}
@@ -437,44 +498,149 @@ static void msm_hotplug_work(struct work_struct *work)
 	else if (target < hotplug.min_cpus_online)
 		target = hotplug.min_cpus_online;
 
-	if (online_cpus != target) {
-		if (target > online_cpus)
+	if (stats.online_cpus != target) {
+		if (target > stats.online_cpus)
 			online_cpu(target);
-		else if (target < online_cpus)
+		else if (target < stats.online_cpus)
 			offline_cpu(target);
 	}
 
-	dprintk("%s: cur_load: %3u online_cpus: %u target: %u\n", MSM_HOTPLUG,
-		cur_load, online_cpus, target);
-
 reschedule:
+	dprintk("%s: cur_avg_load: %3u online_cpus: %u target: %u\n", MSM_HOTPLUG,
+		stats.cur_avg_load, stats.online_cpus, target);
 	reschedule_hotplug_work();
 }
 
-static void msm_hotplug_resume_work(struct work_struct *work)
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+static void msm_hotplug_suspend(struct work_struct *work)
 {
-	online_cpu(stats.total_cpus);
+	int cpu;
+
+	if (!hotplug.msm_enabled)
+		return;
+
+	/* Flush hotplug workqueue */
+	flush_workqueue(hotplug_wq);
+	cancel_delayed_work_sync(&hotplug_work);
+
+	mutex_lock(&hotplug.msm_hotplug_mutex);
+	hotplug.suspended = 1;
+	mutex_unlock(&hotplug.msm_hotplug_mutex);
+
+	/* Put all sibling cores to sleep */
+	for_each_online_cpu(cpu) {
+		if (cpu == 0)
+			continue;
+		cpu_down(cpu);
+	}
 }
 
-static int fb_notifier_callback(struct notifier_block *nb,
-                                 unsigned long event, void *data)
+static void __ref msm_hotplug_resume(struct work_struct *work)
 {
-        if (event == FB_BLANK_UNBLANK)
-		schedule_work(&hotplug.resume_work);
+	int cpu, required_reschedule = 0;
 
-        return 0;
+	if (!hotplug.msm_enabled)
+		return;
+
+	if (hotplug.suspended) {
+		mutex_lock(&hotplug.msm_hotplug_mutex);
+		required_reschedule = 1;
+		hotplug.suspended = 0;
+		mutex_unlock(&hotplug.msm_hotplug_mutex);
+		/* Initialize canceled hotplug work */
+		INIT_DELAYED_WORK(&hotplug_work, msm_hotplug_work);
+	}
+
+	/* Fire up all CPUs */
+	for_each_cpu_not(cpu, cpu_online_mask) {
+		if (cpu == 0)
+			continue;
+		cpu_up(cpu);
+		apply_down_lock(cpu);
+	}
+
+	/* Resume hotplug workqueue if required */
+	if (required_reschedule)
+		reschedule_hotplug_work();
 }
+
+#ifdef CONFIG_LCD_NOTIFY
+static void __msm_hotplug_suspend(void)
+#elif defined(CONFIG_POWERSUSPEND)
+static void __msm_hotplug_suspend(struct power_suspend *handler)
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+static void __msm_hotplug_suspend(struct early_suspend *handler)
+#endif
+{
+	INIT_DELAYED_WORK(&hotplug.suspend_work, msm_hotplug_suspend);
+	schedule_delayed_work_on(0, &hotplug.suspend_work, 
+				 msecs_to_jiffies(hotplug.suspend_defer_time * 1000)); 
+}
+
+#ifdef CONFIG_LCD_NOTIFY
+static void __msm_hotplug_resume(void)
+#elif defined(CONFIG_POWERSUSPEND)
+static void __msm_hotplug_resume(struct power_suspend *handler)
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+static void __msm_hotplug_resume(struct early_suspend *handler)
+#endif
+{
+	cancel_delayed_work_sync(&hotplug.suspend_work);
+	schedule_work_on(0, &hotplug.resume_work);
+}
+
+#ifdef CONFIG_LCD_NOTIFY
+static int lcd_notifier_callback(struct notifier_block *this,
+				unsigned long event, void *data)
+{
+	switch (event) {
+	case LCD_EVENT_ON_END:
+	case LCD_EVENT_OFF_START:
+		break;
+	case LCD_EVENT_ON_START:
+		__msm_hotplug_resume();
+		break;
+	case LCD_EVENT_OFF_END:
+		__msm_hotplug_suspend();
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+#elif defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+#ifdef CONFIG_POWERSUSPEND
+static struct power_suspend msm_hotplug_power_suspend_driver = {
+#else
+static struct early_suspend msm_hotplug_early_suspend_driver = {
+	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10,
+#endif
+	.suspend = __msm_hotplug_suspend,
+	.resume = __msm_hotplug_resume,
+};
+#endif
+#endif
 
 static void hotplug_input_event(struct input_handle *handle, unsigned int type,
 				unsigned int code, int value)
 {
-	u64 now = ktime_to_us(ktime_get());
+	u64 now;
 
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	if (hotplug.suspended) {
+		dprintk("%s: suspended.\n", MSM_HOTPLUG);
+		return;
+	}
+#endif
+
+	now = ktime_to_us(ktime_get());
 	hotplug.last_input = now;
 	if (now - last_boost_time < MIN_INPUT_INTERVAL)
 		return;
 
-	if (num_online_cpus() >= hotplug.cpus_boosted)
+	if (num_online_cpus() >= hotplug.cpus_boosted ||
+		hotplug.cpus_boosted <= hotplug.min_cpus_online)
 		return;
 
 	dprintk("%s: online_cpus: %u boosted\n", MSM_HOTPLUG,
@@ -497,7 +663,7 @@ static int hotplug_input_connect(struct input_handler *handler,
 
 	handle->dev = dev;
 	handle->handler = handler;
-	handle->name = "msm-hotplug";
+	handle->name = handler->name;
 
 	err = input_register_handle(handle);
 	if (err)
@@ -508,9 +674,9 @@ static int hotplug_input_connect(struct input_handler *handler,
 		goto err_open;
 
 	return 0;
-err_register:
-	input_unregister_handle(handle);
 err_open:
+	input_unregister_handle(handle);
+err_register:
 	kfree(handle);
 	return err;
 }
@@ -523,7 +689,21 @@ static void hotplug_input_disconnect(struct input_handle *handle)
 }
 
 static const struct input_device_id hotplug_ids[] = {
-	{ .driver_info = 1 },
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
+			 INPUT_DEVICE_ID_MATCH_ABSBIT,
+		.evbit = { BIT_MASK(EV_ABS) },
+		.absbit = { [BIT_WORD(ABS_MT_POSITION_X)] =
+			    BIT_MASK(ABS_MT_POSITION_X) |
+			    BIT_MASK(ABS_MT_POSITION_Y) },
+	}, /* multi-touch touchscreen */
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_KEYBIT |
+			 INPUT_DEVICE_ID_MATCH_ABSBIT,
+		.keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
+		.absbit = { [BIT_WORD(ABS_X)] =
+			    BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
+	}, /* touchpad */
 	{ },
 };
 
@@ -535,39 +715,202 @@ static struct input_handler hotplug_input_handler = {
 	.id_table	= hotplug_ids,
 };
 
+static int __ref msm_hotplug_start(void)
+{
+	int cpu, ret = 0;
+	struct down_lock *dl;
+
+	hotplug_wq =
+	    alloc_workqueue("msm_hotplug_wq", WQ_HIGHPRI | WQ_FREEZABLE, 0);
+	if (!hotplug_wq) {
+		pr_err("%s: Failed to allocate hotplug workqueue\n",
+		       MSM_HOTPLUG);
+		ret = -ENOMEM;
+		goto err_out;
+	}
+
+#ifdef CONFIG_LCD_NOTIFY
+	hotplug.notif.notifier_call = lcd_notifier_callback;
+        if (lcd_register_client(&hotplug.notif) != 0) {
+                pr_err("%s: Failed to register LCD notifier callback\n",
+                       MSM_HOTPLUG);
+		goto err_dev;
+	}
+#elif defined(CONFIG_POWERSUSPEND)
+	register_power_suspend(&msm_hotplug_power_suspend_driver);
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+	register_early_suspend(&msm_hotplug_early_suspend_driver);
+#endif
+	ret = input_register_handler(&hotplug_input_handler);
+	if (ret) {
+		pr_err("%s: Failed to register input handler: %d\n",
+		       MSM_HOTPLUG, ret);
+		goto err_dev;
+	}
+
+	stats.load_hist = kmalloc(sizeof(stats.hist_size), GFP_KERNEL);
+	if (!stats.load_hist) {
+		pr_err("%s: Failed to allocate memory\n", MSM_HOTPLUG);
+		ret = -ENOMEM;
+		goto err_dev;
+	}
+
+	mutex_init(&stats.stats_mutex);
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	mutex_init(&hotplug.msm_hotplug_mutex);
+#endif
+
+	INIT_DELAYED_WORK(&hotplug_work, msm_hotplug_work);
+	INIT_WORK(&hotplug.up_work, cpu_up_work);
+	INIT_WORK(&hotplug.down_work, cpu_down_work);
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	INIT_DELAYED_WORK(&hotplug.suspend_work, msm_hotplug_suspend);
+	INIT_WORK(&hotplug.resume_work, msm_hotplug_resume);
+#endif
+
+	for_each_possible_cpu(cpu) {
+		dl = &per_cpu(lock_info, cpu);
+		INIT_DELAYED_WORK(&dl->lock_rem, remove_down_lock);
+	}
+
+	/* Fire up all CPUs */
+	for_each_cpu_not(cpu, cpu_online_mask) {
+		if (cpu == 0)
+			continue;
+		cpu_up(cpu);
+		apply_down_lock(cpu);
+	}
+
+	queue_delayed_work_on(0, hotplug_wq, &hotplug_work,
+			      START_DELAY);
+
+	return ret;
+err_dev:
+	destroy_workqueue(hotplug_wq);
+err_out:
+	hotplug.msm_enabled = 0;
+	return ret;
+}
+
+static void msm_hotplug_stop(void)
+{
+	int cpu;
+	struct down_lock *dl;
+
+	for_each_possible_cpu(cpu) {
+		dl = &per_cpu(lock_info, cpu);
+		cancel_delayed_work_sync(&dl->lock_rem);
+	}
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	cancel_work_sync(&hotplug.resume_work);
+	cancel_delayed_work_sync(&hotplug.suspend_work);
+#endif
+	cancel_work_sync(&hotplug.down_work);
+	cancel_work_sync(&hotplug.up_work);
+
+	flush_workqueue(hotplug_wq);
+	cancel_delayed_work_sync(&hotplug_work);
+
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	mutex_destroy(&hotplug.msm_hotplug_mutex);
+#endif
+	mutex_destroy(&stats.stats_mutex);
+	kfree(stats.load_hist);
+
+#ifdef CONFIG_LCD_NOTIFY
+	lcd_unregister_client(&hotplug.notif);
+	hotplug.notif.notifier_call = NULL;
+#elif defined(CONFIG_POWERSUSPEND)
+	unregister_power_suspend(&msm_hotplug_power_suspend_driver);
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+	unregister_early_suspend(&msm_hotplug_early_suspend_driver);
+#endif
+	input_unregister_handler(&hotplug_input_handler);
+
+	destroy_workqueue(hotplug_wq);
+
+	/* Put all sibling cores to sleep */
+	for_each_online_cpu(cpu) {
+		if (cpu == 0)
+			continue;
+		cpu_down(cpu);
+	}
+}
+
+static unsigned int *get_tokenized_data(const char *buf, int *num_tokens)
+{
+	const char *cp;
+	int i;
+	int ntokens = 1;
+	int *tokenized_data;
+	int err = -EINVAL;
+
+	cp = buf;
+	while ((cp = strpbrk(cp + 1, " :")))
+		ntokens++;
+
+	if (!(ntokens & 0x1))
+		goto err;
+
+	tokenized_data = kmalloc(ntokens * sizeof(int), GFP_KERNEL);
+	if (!tokenized_data) {
+		err = -ENOMEM;
+		goto err;
+	}
+
+	cp = buf;
+	i = 0;
+	while (i < ntokens) {
+		if (sscanf(cp, "%d", &tokenized_data[i++]) != 1)
+			goto err_kfree;
+
+		cp = strpbrk(cp, " :");
+		if (!cp)
+			break;
+		cp++;
+	}
+
+	if (i != ntokens)
+		goto err_kfree;
+
+	*num_tokens = ntokens;
+	return tokenized_data;
+
+err_kfree:
+	kfree(tokenized_data);
+err:
+	return ERR_PTR(err);
+}
+
 /************************** sysfs interface ************************/
 
 static ssize_t show_enable_hotplug(struct device *dev,
 				   struct device_attribute *msm_hotplug_attrs,
 				   char *buf)
 {
-	return sprintf(buf, "%u\n", hotplug.enabled);
+	return sprintf(buf, "%u\n", hotplug.msm_enabled);
 }
 
 static ssize_t store_enable_hotplug(struct device *dev,
 				    struct device_attribute *msm_hotplug_attrs,
 				    const char *buf, size_t count)
 {
-	int ret, cpu;
+	int ret;
 	unsigned int val;
 
 	ret = sscanf(buf, "%u", &val);
 	if (ret != 1 || val < 0 || val > 1)
 		return -EINVAL;
 
-	hotplug.enabled = val;
+	if (val == hotplug.msm_enabled)
+		return count;
 
-	if (hotplug.enabled) {
-		reschedule_hotplug_work();
-	} else {
-		flush_workqueue(hotplug_wq);
-		cancel_delayed_work_sync(&hotplug_work);
-		for_each_online_cpu(cpu) {
-			if (cpu == 0)
-				continue;
-			cpu_down(cpu);
-		}
-	}
+	hotplug.msm_enabled = val;
+
+	if (hotplug.msm_enabled)
+		ret = msm_hotplug_start();
+	else
+		msm_hotplug_stop();
 
 	return count;
 }
@@ -620,26 +963,43 @@ static ssize_t store_boost_lock_duration(struct device *dev,
 	return count;
 }
 
-static ssize_t show_update_rate(struct device *dev,
+static ssize_t show_update_rates(struct device *dev,
 				struct device_attribute *msm_hotplug_attrs,
 				char *buf)
 {
-	return sprintf(buf, "%u\n", stats.update_rate);
+	int i;
+	ssize_t ret = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&stats.update_rates_lock, flags);
+
+	for (i = 0; i < stats.nupdate_rates; i++)
+		ret += sprintf(buf + ret, "%u%s", stats.update_rates[i],
+			       i & 0x1 ? ":" : " ");
+
+	sprintf(buf + ret - 1, "\n");
+	spin_unlock_irqrestore(&stats.update_rates_lock, flags);
+	return ret;
 }
 
-static ssize_t store_update_rate(struct device *dev,
+static ssize_t store_update_rates(struct device *dev,
 				 struct device_attribute *msm_hotplug_attrs,
 				 const char *buf, size_t count)
 {
-	int ret;
-	unsigned int val;
+	int ntokens;
+	unsigned int *new_update_rates = NULL;
+	unsigned long flags;
 
-	ret = sscanf(buf, "%u", &val);
-	if (ret != 1)
-		return -EINVAL;
+	new_update_rates = get_tokenized_data(buf, &ntokens);
+	if (IS_ERR(new_update_rates))
+		return PTR_RET(new_update_rates);
 
-	stats.update_rate = val;
-
+	spin_lock_irqsave(&stats.update_rates_lock, flags);
+	if (stats.update_rates != default_update_rates)
+		kfree(stats.update_rates);
+	stats.update_rates = new_update_rates;
+	stats.nupdate_rates = ntokens;
+	spin_unlock_irqrestore(&stats.update_rates_lock, flags);
 	return count;
 }
 
@@ -696,13 +1056,16 @@ static ssize_t store_history_size(struct device *dev,
 	if (ret != 1 || val < 1 || val > 20)
 		return -EINVAL;
 
-	flush_workqueue(hotplug_wq);
-	cancel_delayed_work_sync(&hotplug_work);
+	if (hotplug.msm_enabled) {
+		flush_workqueue(hotplug_wq);
+		cancel_delayed_work_sync(&hotplug_work);
+		memset(stats.load_hist, 0, sizeof(stats.load_hist));
+	}
 
-	memset(stats.load_hist, 0, sizeof(stats.load_hist));
 	stats.hist_size = val;
 
-	reschedule_hotplug_work();
+	if (hotplug.msm_enabled)
+		reschedule_hotplug_work();
 
 	return count;
 }
@@ -722,7 +1085,7 @@ static ssize_t store_min_cpus_online(struct device *dev,
 	unsigned int val;
 
 	ret = sscanf(buf, "%u", &val);
-	if (ret != 1 || val < 1)
+	if (ret != 1 || val < 1 || val > DEFAULT_MAX_CPUS_ONLINE)
 		return -EINVAL;
 
 	if (hotplug.max_cpus_online < val)
@@ -748,7 +1111,7 @@ static ssize_t store_max_cpus_online(struct device *dev,
 	unsigned int val;
 
 	ret = sscanf(buf, "%u", &val);
-	if (ret != 1 || val < 1)
+	if (ret != 1 || val < 1 || val > DEFAULT_MAX_CPUS_ONLINE)
 		return -EINVAL;
 
 	if (hotplug.min_cpus_online > val)
@@ -758,6 +1121,31 @@ static ssize_t store_max_cpus_online(struct device *dev,
 
 	return count;
 }
+
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+static ssize_t store_suspend_defer_time(struct device *dev,
+				    struct device_attribute *msm_hotplug_attrs,
+				    const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1)
+		return -EINVAL;
+
+	hotplug.suspend_defer_time = val;
+
+	return count;
+}
+
+static ssize_t show_suspend_defer_time(struct device *dev,
+				 struct device_attribute *msm_hotplug_attrs,
+				 char *buf)
+{
+	return sprintf(buf, "%u\n", hotplug.suspend_defer_time);
+}
+#endif
 
 static ssize_t show_cpus_boosted(struct device *dev,
 				 struct device_attribute *msm_hotplug_attrs,
@@ -774,7 +1162,7 @@ static ssize_t store_cpus_boosted(struct device *dev,
 	unsigned int val;
 
 	ret = sscanf(buf, "%u", &val);
-	if (ret != 1 || val < 1)
+	if (ret != 1 || val < 1 || val > DEFAULT_MAX_CPUS_ONLINE)
 		return -EINVAL;
 
 	hotplug.cpus_boosted = val;
@@ -835,18 +1223,22 @@ static ssize_t show_current_load(struct device *dev,
 	return sprintf(buf, "%u\n", stats.cur_avg_load);
 }
 
-static DEVICE_ATTR(enabled, 644, show_enable_hotplug, store_enable_hotplug);
+static DEVICE_ATTR(msm_enabled, 644, show_enable_hotplug, store_enable_hotplug);
 static DEVICE_ATTR(down_lock_duration, 644, show_down_lock_duration,
 		   store_down_lock_duration);
 static DEVICE_ATTR(boost_lock_duration, 644, show_boost_lock_duration,
 		   store_boost_lock_duration);
-static DEVICE_ATTR(update_rate, 644, show_update_rate, store_update_rate);
+static DEVICE_ATTR(update_rates, 644, show_update_rates, store_update_rates);
 static DEVICE_ATTR(load_levels, 644, show_load_levels, store_load_levels);
 static DEVICE_ATTR(history_size, 644, show_history_size, store_history_size);
 static DEVICE_ATTR(min_cpus_online, 644, show_min_cpus_online,
 		   store_min_cpus_online);
 static DEVICE_ATTR(max_cpus_online, 644, show_max_cpus_online,
 		   store_max_cpus_online);
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+static DEVICE_ATTR(suspend_defer_time, 644, show_suspend_defer_time,
+		   store_suspend_defer_time);
+#endif
 static DEVICE_ATTR(cpus_boosted, 644, show_cpus_boosted, store_cpus_boosted);
 static DEVICE_ATTR(offline_load, 644, show_offline_load, store_offline_load);
 static DEVICE_ATTR(fast_lane_load, 644, show_fast_lane_load,
@@ -854,14 +1246,17 @@ static DEVICE_ATTR(fast_lane_load, 644, show_fast_lane_load,
 static DEVICE_ATTR(current_load, 444, show_current_load, NULL);
 
 static struct attribute *msm_hotplug_attrs[] = {
-	&dev_attr_enabled.attr,
+	&dev_attr_msm_enabled.attr,
 	&dev_attr_down_lock_duration.attr,
 	&dev_attr_boost_lock_duration.attr,
-	&dev_attr_update_rate.attr,
+	&dev_attr_update_rates.attr,
 	&dev_attr_load_levels.attr,
 	&dev_attr_history_size.attr,
 	&dev_attr_min_cpus_online.attr,
 	&dev_attr_max_cpus_online.attr,
+#if defined(CONFIG_LCD_NOTIFY) || defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	&dev_attr_suspend_defer_time.attr,
+#endif
 	&dev_attr_cpus_boosted.attr,
 	&dev_attr_offline_load.attr,
 	&dev_attr_fast_lane_load.attr,
@@ -877,18 +1272,8 @@ static struct attribute_group attr_group = {
 
 static int __devinit msm_hotplug_probe(struct platform_device *pdev)
 {
-	int cpu, ret = 0;
+	int ret = 0;
 	struct kobject *module_kobj;
-	struct down_lock *dl;
-
-	hotplug_wq =
-	    alloc_workqueue("msm_hotplug_wq", WQ_HIGHPRI | WQ_FREEZABLE, 0);
-	if (!hotplug_wq) {
-		pr_err("%s: Failed to allocate hotplug workqueue\n",
-		       MSM_HOTPLUG);
-		ret = -ENOMEM;
-		goto err_out;
-	}
 
 	module_kobj = kset_find_obj(module_kset, MSM_HOTPLUG);
 	if (!module_kobj) {
@@ -902,48 +1287,15 @@ static int __devinit msm_hotplug_probe(struct platform_device *pdev)
 		goto err_dev;
 	}
 
-	hotplug.notif.notifier_call = fb_notifier_callback;
-        if (fb_register_client(&hotplug.notif) != 0) {
-                pr_err("%s: Failed to register notifier callback\n",
-                       MSM_HOTPLUG);
-		goto err_dev;
+	if (hotplug.msm_enabled) {
+		ret = msm_hotplug_start();
+		if (ret != 0)
+			goto err_dev;
 	}
-
-	ret = input_register_handler(&hotplug_input_handler);
-	if (ret) {
-		pr_err("%s: Failed to register input handler: %d\n",
-		       MSM_HOTPLUG, ret);
-		goto err_dev;
-	}
-
-	stats.load_hist = kmalloc(sizeof(stats.hist_size), GFP_KERNEL);
-	if (!stats.load_hist) {
-		pr_err("%s: Failed to allocated memory\n", MSM_HOTPLUG);
-		ret = -ENOMEM;
-		goto err_dev;
-	}
-
-	mutex_init(&stats.stats_mutex);
-
-	INIT_DELAYED_WORK(&hotplug_work, msm_hotplug_work);
-	INIT_WORK(&hotplug.up_work, cpu_up_work);
-	INIT_WORK(&hotplug.down_work, cpu_down_work);
-	INIT_WORK(&hotplug.resume_work, msm_hotplug_resume_work);
-
-	for_each_possible_cpu(cpu) {
-		dl = &per_cpu(lock_info, cpu);
-		INIT_DELAYED_WORK(&dl->lock_rem, remove_down_lock);
-	}
-
-	if (hotplug.enabled)
-		queue_delayed_work_on(0, hotplug_wq, &hotplug_work,
-				      START_DELAY);
 
 	return ret;
 err_dev:
 	module_kobj = NULL;
-	destroy_workqueue(hotplug_wq);
-err_out:
 	return ret;
 }
 
@@ -954,9 +1306,8 @@ static struct platform_device msm_hotplug_device = {
 
 static int msm_hotplug_remove(struct platform_device *pdev)
 {
-	destroy_workqueue(hotplug_wq);
-	input_unregister_handler(&hotplug_input_handler);
-	kfree(stats.load_hist);
+	if (hotplug.msm_enabled)
+		msm_hotplug_stop();
 
 	return 0;
 }
