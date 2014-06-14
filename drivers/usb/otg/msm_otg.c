@@ -1252,9 +1252,12 @@ static int msm_otg_usbdev_notify(struct notifier_block *self,
 	 * ACA dock can supply IDEV_CHG irrespective devices connected
 	 * on the accessory port.
 	 */
-	if (!udev->parent || udev->parent->parent ||
+
+	// do not cause required code to be skipped -ziddey
+	// will not switch to a_host or charge otherwise
+	/*if (!udev->parent || udev->parent->parent ||
 			motg->chg_type == USB_ACA_DOCK_CHARGER)
-		goto out;
+		goto out;*/
 
 	switch (action) {
 	case USB_DEVICE_ADD:
@@ -2178,7 +2181,7 @@ static void msm_chg_detect_work(struct work_struct *w)
 				if (otg_hack_active) {
 					// simulate ID_A to force host mode
 					// with charging -ziddey
-					pr_info("*** FORCING USB HOST MODE W/ CHARGING ***\n");
+					pr_info("*** FORCING USB HOST MODE WITH CHARGING ***\n");
 					set_bit(ID_A, &motg->inputs);
 					motg->chg_type = USB_ACA_A_CHARGER;
 				} else
