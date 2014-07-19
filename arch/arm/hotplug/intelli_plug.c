@@ -58,9 +58,26 @@ module_param(intelli_plug_active, uint, 0644);
 static unsigned int touch_boost_active = 1;
 module_param(touch_boost_active, uint, 0644);
 
+static unsigned int eco_mode_active = 0;
+module_param(eco_mode_active, uint, 0644);
+
 static unsigned int nr_run_profile_sel = 0;
 module_param(nr_run_profile_sel, uint, 0644);
 
+static int __init read_eco_mode_cmdline(char *eco_mode)
+ {
+ 	if (strcmp(eco_mode, "0") == 0) {
+ 		eco_mode_active = 0;
+ 	} else if (strcmp(eco_mode, "1") == 0){
+ 		eco_mode_active = 1;
+ 	} else {
+ 		eco_mode_active = 0;
+ 	}
+ 
+	return 0;
+}
+__setup("eco_mode=", read_eco_mode_cmdline);
+ 
 //default to something sane rather than zero
 static unsigned int sampling_time = DEF_SAMPLING_MS;
 
@@ -160,6 +177,8 @@ static unsigned int nr_run_last;
 extern unsigned long avg_nr_running(void);
 extern unsigned long avg_cpu_nr_running(unsigned int cpu);
 
+static unsigned int nr_run_profile_last, profile_flag;
+
 static unsigned int calculate_thread_stats(void)
 {
 	unsigned int avg_nr_run = avg_nr_running();
@@ -167,7 +186,28 @@ static unsigned int calculate_thread_stats(void)
 	unsigned int threshold_size;
 	unsigned int *current_profile;
 
+	unsigned int nr_change_flag = 0;
+ 
+ 	if (eco_mode_active && nr_run_profile_sel != 0 && nr_run_profile_sel != NR_RUN_ECO_MODE_PROFILE) {
+ 		eco_mode_active = 0;
+ 		nr_change_flag = 1;
+ 	}
+ 
+ 	if (eco_mode_active) {
+ 		if (!profile_flag) {
+ 			nr_run_profile_last = nr_run_profile_sel;
+ 			profile_flag = 1;
+ 		}
+ 		nr_run_profile_sel = NR_RUN_ECO_MODE_PROFILE;
+ 	}
+ 
+ 	if (eco_mode_active == 0 && nr_change_flag == 0 && profile_flag == 1) {
+ 		nr_run_profile_sel = nr_run_profile_last;
+ 		profile_flag = 0;
+ 	}
+ 
 	current_profile = nr_run_profiles[nr_run_profile_sel];
+
 	if (num_possible_cpus() > 2) {
 		if (nr_run_profile_sel >= NR_RUN_ECO_MODE_PROFILE)
 			threshold_size =
