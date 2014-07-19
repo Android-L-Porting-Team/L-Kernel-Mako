@@ -1,0 +1,6 @@
+# Inception Extras
+
+service inception-sh /system/bin/sh /init.inception.sh
+	class late_start
+	user root
+	oneshot
