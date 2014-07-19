@@ -250,7 +250,6 @@ config CPU_FREQ_GOV_ONDEMANDPLUS
 	  For details, take a look at linux/Documentation/cpu-freq.
 
 	  If in doubt, say N.
->>>>>>> 16fe33b... cpufreq: Add OndemandPLUS Gov
 
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
