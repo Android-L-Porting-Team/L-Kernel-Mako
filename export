@@ -1,15 +1,16 @@
 #!/bin/bash
-
-clear
-
-git checkout 4.4.4
-
-make clean
-make mrproper
 export ARCH=arm
-export CROSS_COMPILE=~/toolchain/arm-eabi-4.10/bin/arm-eabi-
-export ENABLE_GRAPHITE=true
-
+if [ "$1" == "local" ]; then
+	echo "Local Build"
+	build=~/aviz1911/output
+	export CROSS_COMPILE=~/toolchain/arm-eabi-4.10/bin/arm-eabi-
+	export ENABLE_GRAPHITE=true
+else
+	echo "Remote Build"
+	build=~/aviz1911/output
+	export CROSS_COMPILE=~/toolchain/arm-eabi-4.10/bin/arm-eabi-
+	export ENABLE_GRAPHITE=true
+fi
 kernel="inception"
 version="4"
 rom="aosp"
@@ -87,7 +88,7 @@ else
 	case "$bchoice" in
 		y|Y)
 			make "$config"
-			make "$jobcount"
+			make -j6
 			exit 0;;
 		n|N )
 			exit 0;;
