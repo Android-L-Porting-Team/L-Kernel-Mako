@@ -13,7 +13,7 @@ else
 fi
 kernel="inception"
 version="r4"
-rom="aosp"
+rom="L-Preview"
 variant="mako"
 ramdisk=ramdisk
 config="inception_defconfig"
