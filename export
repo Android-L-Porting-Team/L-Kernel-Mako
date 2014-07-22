@@ -12,7 +12,7 @@ else
 	export ENABLE_GRAPHITE=true
 fi
 kernel="inception"
-version="r4"
+version="r5"
 rom="L-Preview"
 variant="mako"
 ramdisk=ramdisk
