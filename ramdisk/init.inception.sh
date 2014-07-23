@@ -1,57 +1,4 @@
 #!/system/bin/sh
-# Copyright (c) 2014, Savoca <adeddo27@gmail.com>
-# Copyright (c) 2009-2014, The Linux Foundation. All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#     * Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of The Linux Foundation nor
-#       the names of its contributors may be used to endorse or promote
-#       products derived from this software without specific prior written
-#       permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-# NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-
-# Disable MPD, enable intelliplug
-if [ -e /sys/module/intelli_plug/parameters/intelli_plug_active ]; then
-	stop mpdecision
-	echo "1" > /sys/module/intelli_plug/parameters/intelli_plug_active
-	echo "[inception] IntelliPlug enabled" | tee /dev/kmsg
-else
-	echo "[inception] IntelliPlug not found, using MPDecision" | tee /dev/kmsg
-	start mpdecision
-fi
-
-# Set TCP westwood
-if [ -e /proc/sys/net/ipv4/tcp_congestion_control ]; then
-	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
-	echo "[inception] TCP set: westwood" | tee /dev/kmsg
-else
-	echo "[inception] what" | tee /dev/kmsg
-fi
-
-# Set IOSched
-if [ -e /sys/block/mmcblk0/queue/scheduler ]; then
-	echo "deadline" > /sys/block/mmcblk0/queue/scheduler
-	echo "[inception] IOSched set: deadline" | tee /dev/kmsg
-else
-	echo "[inception] D:" | tee /dev/kmsg
-fi
 
 # Sweep2Dim default
 if [ -e /sys/android_touch/sweep2wake ]; then
@@ -78,3 +25,22 @@ if [ -e /sys/devices/platform/kcal_ctrl.0/kcal ]; then
 	echo "1" > /sys/devices/platform/kcal_ctrl.0/kcal_ctrl
 	echo "[inception] LCD_KCAL: red=[$sd_r], green=[$sd_g], blue=[$sd_b]" | tee /dev/kmsg
 fi
+
+# disable sysctl.conf to prevent ROM interference with tunables
+$bb mount -o rw,remount /system;
+$bb [ -e /system/etc/sysctl.conf ] && $bb mv -f /system/etc/sysctl.conf /system/etc/sysctl.conf.fkbak;
+
+# disable the PowerHAL since there is a kernel-side touch boost implemented
+$bb [ -e /system/lib/hw/power.msm8960.so.fkbak ] || $bb cp /system/lib/hw/power.msm8960.so /system/lib/hw/power.msm8960.so.fkbak;
+$bb [ -e /system/lib/hw/power.msm8960.so ] && $bb rm -f /system/lib/hw/power.msm8960.so;
+
+# create and set permissions for /system/etc/init.d if it doesn't already exist
+if [ ! -e /system/etc/init.d ]; then
+  $bb mkdir /system/etc/init.d;
+  $bb chown -R root.root /system/etc/init.d;
+  $bb chmod -R 755 /system/etc/init.d;
+fi;
+$bb mount -o ro,remount /system;
+
+echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
+echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
