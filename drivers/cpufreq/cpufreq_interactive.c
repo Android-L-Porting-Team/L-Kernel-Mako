@@ -128,6 +128,8 @@ static int timer_slack_val = DEFAULT_TIMER_SLACK;
 static unsigned long screen_off_max = DEFAULT_SCREEN_OFF_MAX;
 static bool io_is_busy;
 
+#define CPU_SYNC_FREQ 1000000
+
 /*
  * If the max load among other CPUs is higher than up_threshold_any_cpu_load
  * and if the highest frequency among the other CPUs is higher than
