@@ -3,12 +3,12 @@ export ARCH=arm
 if [ "$1" == "local" ]; then
 	echo "Local Build"
 	build=~/aviz1911/output
-	export CROSS_COMPILE=~/toolchain/arm-eabi-4.10/bin/arm-eabi-
+	export CROSS_COMPILE=~/toolchain/sm-arm-eabi-4.10/bin/arm-eabi-
 	export ENABLE_GRAPHITE=true
 else
 	echo "Remote Build"
 	build=~/aviz1911/output
-	export CROSS_COMPILE=~/toolchain/arm-eabi-4.10/bin/arm-eabi-
+	export CROSS_COMPILE=~/toolchain/sm-arm-eabi-4.10/bin/arm-eabi-
 	export ENABLE_GRAPHITE=true
 fi
 kernel="inception"
