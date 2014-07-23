@@ -70,7 +70,7 @@ static int __secure_tz_entry(u32 cmd, u32 val, u32 id)
 
 unsigned long window_time = 0;
 unsigned long sample_time_ms = 100;
-unsigned int up_threshold = 60;
+unsigned int up_threshold = 50;
 unsigned int down_threshold = 25;
 unsigned int up_differential = 10;
 bool debug = 0;
