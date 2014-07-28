@@ -41,6 +41,3 @@ if [ ! -e /system/etc/init.d ]; then
   $bb chmod -R 755 /system/etc/init.d;
 fi;
 $bb mount -o ro,remount /system;
-
-echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
-echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
