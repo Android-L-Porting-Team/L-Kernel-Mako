@@ -1,5 +1,31 @@
 #!/system/bin/sh
 
+# Disable MPD, enable intelliplug
+if [ -e /sys/module/intelli_plug/parameters/intelli_plug_active ]; then
+	stop mpdecision
+	echo "1" > /sys/module/intelli_plug/parameters/intelli_plug_active
+	echo "[furnace] IntelliPlug enabled" | tee /dev/kmsg
+else
+	echo "[furnace] IntelliPlug not found, using MPDecision" | tee /dev/kmsg
+	start mpdecision
+fi
+
+# Set TCP westwood
+if [ -e /proc/sys/net/ipv4/tcp_congestion_control ]; then
+	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
+	echo "[furnace] TCP set: westwood" | tee /dev/kmsg
+else
+	echo "[furnace] what" | tee /dev/kmsg
+fi
+
+# Set IOSched
+if [ -e /sys/block/mmcblk0/queue/scheduler ]; then
+	echo "fiops" > /sys/block/mmcblk0/queue/scheduler
+	echo "[furnace] IOSched set: fiops" | tee /dev/kmsg
+else
+	echo "[furnace] D:" | tee /dev/kmsg
+fi
+
 # Sweep2Dim default
 if [ -e /sys/android_touch/sweep2wake ]; then
 	if [ -e /sys/android_touch/sweep2dim ]; then
