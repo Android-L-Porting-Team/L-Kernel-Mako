@@ -1,4 +1,4 @@
-ui_print("Inception kernel");
+ui_print("defcon kernel");
 ui_print("Installing kernel...");
 package_extract_file("boot.img", "/dev/block/platform/msm_sdcc.1/by-name/boot");
 ui_print("Installing modules...");
