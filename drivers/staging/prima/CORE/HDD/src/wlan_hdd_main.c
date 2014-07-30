@@ -6023,8 +6023,10 @@ err_bap_close:
 
 err_close_adapter:
    hdd_close_all_adapters( pHddCtx );
-   wiphy_unregister(wiphy) ;
-
+#ifdef CONFIG_ENABLE_LINUX_REG
+err_unregister_wiphy:
+   wiphy_unregister(wiphy);
+#endif
 err_vosstop:
    vos_stop(pVosContext);
 
