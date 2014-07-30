@@ -28,10 +28,6 @@
 #define TZ_GOVERNOR_ONDEMAND    1
 #define TZ_GOVERNOR_INTERACTIVE	2
 
-#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-#define TZ_GOVERNOR_SIMPLE	2
-#endif
-
 struct tz_priv {
 	int governor;
 	unsigned int no_switch_cnt;
@@ -105,14 +101,8 @@ static ssize_t tz_governor_show(struct kgsl_device *device,
 
 	if (priv->governor == TZ_GOVERNOR_ONDEMAND)
 		ret = snprintf(buf, 10, "ondemand\n");
-
     else if (priv->governor == TZ_GOVERNOR_INTERACTIVE)
 		ret = snprintf(buf, 13, "interactive\n");
-
-#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-	else if (priv->governor == TZ_GOVERNOR_SIMPLE)
-		ret = snprintf(buf, 8, "simple\n");
-#endif
 	else
 		ret = snprintf(buf, 13, "performance\n");
 
@@ -138,11 +128,6 @@ static ssize_t tz_governor_store(struct kgsl_device *device,
 		priv->governor = TZ_GOVERNOR_ONDEMAND;
     else if (!strncmp(str, "interactive", 11))
 		priv->governor = TZ_GOVERNOR_INTERACTIVE;
-
-#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-	else if (!strncmp(str, "simple", 6))
-		priv->governor = TZ_GOVERNOR_SIMPLE;
-#endif
 	else if (!strncmp(str, "performance", 11))
 		priv->governor = TZ_GOVERNOR_PERFORMANCE;
 
@@ -170,26 +155,13 @@ static struct attribute_group tz_attr_group = {
 
 static void tz_wake(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 {
-
 	return;
-
-	struct tz_priv *priv = pwrscale->priv;
-	if (device->state != KGSL_STATE_NAP &&
-#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-		(priv->governor == TZ_GOVERNOR_ONDEMAND ||
-		 priv->governor == TZ_GOVERNOR_SIMPLE))
-#else
-		priv->governor == TZ_GOVERNOR_ONDEMAND)
-#endif
-		kgsl_pwrctrl_pwrlevel_change(device,
-					device->pwrctrl.default_pwrlevel);
 }
 
 #ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
 /* KGSL Simple GPU Governor */
 /* Copyright (c) 2011-2013, Paul Reioux (Faux123). All rights reserved. */
 static int lazyness = 5;
-static int ramp_up_threshold = 6000;
 
 static int simple_governor(struct kgsl_device *device, int idle_stat)
 {
@@ -197,7 +169,7 @@ static int simple_governor(struct kgsl_device *device, int idle_stat)
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	/* it's currently busy */
-	if (idle_stat < ramp_up_threshold) {
+	if (idle_stat < 6000) {
 		if (pwr->active_pwrlevel == 0)
 			val = 0; /* already maxed, so do nothing */
 		else if ((pwr->active_pwrlevel > 0) &&
@@ -288,10 +260,7 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 
 	idle = (idle > 0) ? idle : 0;
 #ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-	if (priv->governor == TZ_GOVERNOR_SIMPLE)
-		val = simple_governor(device, idle);
-	else
-		val = __secure_tz_entry(TZ_UPDATE_ID, idle, device->id);
+	val = simple_governor(device, idle);
 #else
 	val = __secure_tz_entry(TZ_UPDATE_ID, idle, device->id);
 #endif
