@@ -3497,3 +3497,6 @@ CONFIG_UKSM=y
 
 # Simple GPU Governor
 CONFIG_MSM_KGSL_SIMPLE_GOV=y
+
+# Add Userspace IO  
+CONFIG_UIO=y
