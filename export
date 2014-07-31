@@ -52,8 +52,17 @@ if [ -f ozip/boot.img ]; then
 	read -p "Begin build now..(y/n)? : " dchoice
 	case "$dchoice" in
 		y|Y)
+                        DATE_START=$(date +"%s")
 			make "$config"
-			make -j6
+			make -j9
+
+echo "-------------------------"
+echo "Build Completed in:"
+echo "-------------------------"
+DATE_END=$(date +"%s")
+DIFF=$(($DATE_END - $DATE_START))
+echo "Time: $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
+
 			exit 0;;
 		n|N )
 			exit 0;;
@@ -87,8 +96,15 @@ else
 	read -p "Begin build now..(y/n)? : " bchoice
 	case "$bchoice" in
 		y|Y)
+                        DATE_START=$(date +"%s")
 			make "$config"
-			make -j6
+			make -j9
+echo "-------------------------"
+echo "Build Completed in:"
+echo "-------------------------"
+DATE_END=$(date +"%s")
+DIFF=$(($DATE_END - $DATE_START))
+echo "Time: $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
 			exit 0;;
 		n|N )
 			exit 0;;
