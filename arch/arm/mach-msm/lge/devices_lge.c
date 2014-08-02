@@ -30,6 +30,7 @@
 #include <linux/memblock.h>
 #endif
 
+
 #ifdef CONFIG_LCD_KCAL
 int g_kcal_min = 35;
 #endif
