@@ -11,17 +11,17 @@ echo 0 > /sys/module/intelli_plug/parameters/intelli_plug_active
 # Set TCP westwood
 if [ -e /proc/sys/net/ipv4/tcp_congestion_control ]; then
 	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
-	echo "[furnace] TCP set: westwood" | tee /dev/kmsg
+	echo "[defcon] TCP set: westwood" | tee /dev/kmsg
 else
-	echo "[furnace] what" | tee /dev/kmsg
+	echo "[defcon] what" | tee /dev/kmsg
 fi
 
 # Set IOSched
 if [ -e /sys/block/mmcblk0/queue/scheduler ]; then
 	echo "fiops" > /sys/block/mmcblk0/queue/scheduler
-	echo "[furnace] IOSched set: fiops" | tee /dev/kmsg
+	echo "[defcon] IOSched set: fiops" | tee /dev/kmsg
 else
-	echo "[furnace] D:" | tee /dev/kmsg
+	echo "[defcon] D:" | tee /dev/kmsg
 fi
 
 # Sweep2Dim default
@@ -31,12 +31,12 @@ if [ -e /sys/android_touch/sweep2wake ]; then
 		echo "1" > /sys/android_touch/sweep2dim
 		echo "73" > /sys/module/sweep2wake/parameters/down_kcal
 		echo "73" > /sys/module/sweep2wake/parameters/up_kcal
-		echo "[inception] sweep2dim configured!" | tee /dev/kmsg
+		echo "[defcon] sweep2dim configured!" | tee /dev/kmsg
 	else
-		echo "[inception] sweep2dim not found" | tee /dev/kmsg
+		echo "[defcon] sweep2dim not found" | tee /dev/kmsg
 	fi
 else
-	echo "[inception] sweep2wake not found" | tee /dev/kmsg
+	echo "[defcon] sweep2wake not found" | tee /dev/kmsg
 fi
 
 # Set RGB KCAL
@@ -47,7 +47,7 @@ if [ -e /sys/devices/platform/kcal_ctrl.0/kcal ]; then
 	kcal="$sd_r $sd_g $sd_b"
 	echo "$kcal" > /sys/devices/platform/kcal_ctrl.0/kcal
 	echo "1" > /sys/devices/platform/kcal_ctrl.0/kcal_ctrl
-	echo "[inception] LCD_KCAL: red=[$sd_r], green=[$sd_g], blue=[$sd_b]" | tee /dev/kmsg
+	echo "[defcon] LCD_KCAL: red=[$sd_r], green=[$sd_g], blue=[$sd_b]" | tee /dev/kmsg
 fi
 
 # disable sysctl.conf to prevent ROM interference with tunables
@@ -62,7 +62,7 @@ $bb [ -e /system/lib/hw/power.msm8960.so ] && $bb rm -f /system/lib/hw/power.msm
 if [ ! -e /system/etc/init.d ]; then
   $bb mkdir /system/etc/init.d;
   $bb chown -R root.root /system/etc/init.d;
-  $bb chmod -R 755 /system/etc/init.d;
+  $bb chmod -R 775 /system/etc/init.d;
 fi;
 $bb mount -o ro,remount /system;
 
