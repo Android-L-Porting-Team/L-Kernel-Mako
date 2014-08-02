@@ -1,5 +1,13 @@
 #!/system/bin/sh
 
+# disable autosmp 
+# This can be re-enabled with echo 1
+echo 0 > /sys/module/autosmp/parameters/enabled
+# enable msm_hotplug
+echo 1 > /sys/module/msm_hotplug/msm_enabled
+# disable intelli_plug
+echo 0 > /sys/module/intelli_plug/parameters/intelli_plug_active
+
 # Set TCP westwood
 if [ -e /proc/sys/net/ipv4/tcp_congestion_control ]; then
 	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
