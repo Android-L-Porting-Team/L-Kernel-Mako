@@ -110,6 +110,11 @@ extern int g_kcal_min;
 extern int down_kcal, up_kcal;
 
 extern void sweep2wake_pwrtrigger(void);
+struct kcal_data kcal_value = {
+	.red   = 255,
+	.green = 255,
+	.blue  = 255,
+};
 #endif
 
 #ifdef CONFIG_UPDATE_LCDC_LUT
