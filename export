@@ -75,11 +75,11 @@ echo "Extracting files..."
 if [ -f arch/arm/boot/"$kerneltype" ]; then
 	cp arch/arm/boot/"$kerneltype" out
 	rm -rf ozip/system/lib/modules/*
-	rm -rf /media/Stuff/dev/AnyKernel/system/lib/modules/*
+	rm -rf /media/Stuff/dev/AnyKernel/update/system/lib/modules/*
 	mkdir -p ozip/system/lib/modules
-	mkdir -p /media/Stuff/dev/AnyKernel/system/lib/modules
+	mkdir -p /media/Stuff/dev/AnyKernel/update/system/lib/modules
 	find . -name "*.ko" -exec cp -f {} ozip/system/lib/modules \;
-	find . -name "*.ko" -exec cp -f {} /media/Stuff/dev/AnyKernel/system/lib/modules \;
+	find . -name "*.ko" -exec cp -f {} /media/Stuff/dev/AnyKernel/update/system/lib/modules \;
 	if [ -e ozip/system/lib/modules/*.ko ]; then
 		echo "Modules found."
 	else
@@ -142,11 +142,11 @@ if [ -f arch/arm/boot/"$kerneltype" ]; then
 	rm -rf ozip/system/lib/modules/*
 	echo "Almost Done..."
 	echo "Zipping up AnyKernel zip..."
-	rm /media/Stuff/dev/AnyKernel/kernel/"$kerneltype"
-	cp arch/arm/boot/"$kerneltype" /media/Stuff/dev/AnyKernel/kernel/
-	cd /media/Stuff/dev/AnyKernel/
-	zip -r9 /media/Stuff/dev/AnyKernel/"$kernel"-$version-AnyKernel_"$variant".zip *
-	mv /media/Stuff/dev/AnyKernel/"$kernel"-$version-AnyKernel_"$variant".zip $build
+	rm /media/Stuff/dev/AnyKernel/update/kernel/"$kerneltype"
+	cp arch/arm/boot/"$kerneltype" /media/Stuff/dev/AnyKernel/update/kernel/
+	cd /media/Stuff/dev/AnyKernel/update/
+	zip -r9 /media/Stuff/dev/AnyKernel/update/"$kernel"-$version-AnyKernel_"$variant".zip *
+	mv /media/Stuff/dev/AnyKernel/update/"$kernel"-$version-AnyKernel_"$variant".zip $build
 	echo "Output zip: $build/$kernel-$version-$(echo $rom)_$variant.zip"
 	echo "AnyKernel Output zip: $build/$kernel-$version-AnyKernel_$variant.zip"
 	echo "Done..."
