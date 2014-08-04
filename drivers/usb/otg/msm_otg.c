@@ -1145,12 +1145,12 @@ static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 
 	// remove charge limit (500mA) in host mode -ziddey
 	if (!otg_hack_active) {
-		if ((motg->chg_type == USB_ACA_DOCK_CHARGER ||
-			motg->chg_type == USB_ACA_A_CHARGER ||
-			motg->chg_type == USB_ACA_B_CHARGER ||
-			motg->chg_type == USB_ACA_C_CHARGER) &&
-				mA > IDEV_ACA_CHG_LIMIT)
-			mA = IDEV_ACA_CHG_LIMIT;
+	if ((motg->chg_type == USB_ACA_DOCK_CHARGER ||
+		motg->chg_type == USB_ACA_A_CHARGER ||
+		motg->chg_type == USB_ACA_B_CHARGER ||
+		motg->chg_type == USB_ACA_C_CHARGER) &&
+			mA > IDEV_ACA_CHG_LIMIT)
+		mA = IDEV_ACA_CHG_LIMIT;
 	}
 
 	if (msm_otg_notify_chg_type(motg))
@@ -1162,8 +1162,8 @@ static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 		return;
 #ifdef CONFIG_FORCE_FAST_CHARGE
 	if (force_fast_charge == 1) {
-		mA = USB_FASTCHG_LOAD;
-		pr_info("USB fast charging is ON - 1000mA.\n");
+			mA = USB_FASTCHG_LOAD;
+			pr_info("USB fast charging is ON - 1000mA.\n");
 	} else {
 		pr_info("USB fast charging is OFF.\n");
 	}
