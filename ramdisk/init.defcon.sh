@@ -1,43 +1,41 @@
 #!/system/bin/sh
+bb=busybox
+echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 
-# disable autosmp 
+# Turn on Intelli-Thermal
+	stop thermald
+	stop mpdecision
+	echo 1 > /sys/module/msm_thermal/parameters/enabled
+	echo "[defcon] thermald & mpdecision disabled" | tee /dev/kmsg
+	echo "[defcon] Intelli-Thermal Enabled!" | tee /dev/kmsg
+
+# MSM_Hotplug options
+	echo "1" > /sys/module/msm_hotplug/suspend_max_cpus
+	echo "1026000" > /sys/module/msm_hotplug/suspend_max_freq
+
+# set autosmp as default governor and disable all others
 # This can be re-enabled with echo 1
-echo 1 > /sys/module/autosmp/parameters/enabled
+	echo 1 > /sys/module/autosmp/parameters/enabled
 # enable msm_hotplug
-echo 0 > /sys/module/msm_hotplug/msm_enabled
+	echo 0 > /sys/module/msm_hotplug/msm_enabled
 # disable intelli_plug
-echo 0 > /sys/module/intelli_plug/parameters/intelli_plug_active
+	echo 0 > /sys/module/intelli_plug/parameters/intelli_plug_active
+	echo "[defcon] hotplug options set!" | tee /dev/kmsg
 
 # Set TCP westwood
-if [ -e /proc/sys/net/ipv4/tcp_congestion_control ]; then
 	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
 	echo "[defcon] TCP set: westwood" | tee /dev/kmsg
-else
-	echo "[defcon] what" | tee /dev/kmsg
-fi
 
 # Set IOSched
-if [ -e /sys/block/mmcblk0/queue/scheduler ]; then
 	echo "fiops" > /sys/block/mmcblk0/queue/scheduler
 	echo "[defcon] IOSched set: fiops" | tee /dev/kmsg
-else
-	echo "[defcon] D:" | tee /dev/kmsg
-fi
 
 # Sweep2Dim default
-if [ -e /sys/android_touch/sweep2wake ]; then
-	if [ -e /sys/android_touch/sweep2dim ]; then
-		echo "0" > /sys/android_touch/sweep2wake
-		echo "1" > /sys/android_touch/sweep2dim
-		echo "73" > /sys/module/sweep2wake/parameters/down_kcal
-		echo "73" > /sys/module/sweep2wake/parameters/up_kcal
-		echo "[defcon] sweep2dim configured!" | tee /dev/kmsg
-	else
-		echo "[defcon] sweep2dim not found" | tee /dev/kmsg
-	fi
-else
-	echo "[defcon] sweep2wake not found" | tee /dev/kmsg
-fi
+	echo "0" > /sys/android_touch/sweep2wake
+	echo "1" > /sys/android_touch/sweep2dim
+	echo "73" > /sys/module/sweep2wake/parameters/down_kcal
+	echo "73" > /sys/module/sweep2wake/parameters/up_kcal
+	echo "[defcon] sweep2dim enabled!" | tee /dev/kmsg
 
 # Set RGB KCAL
 if [ -e /sys/devices/platform/kcal_ctrl.0/kcal ]; then
@@ -51,20 +49,20 @@ if [ -e /sys/devices/platform/kcal_ctrl.0/kcal ]; then
 fi
 
 # disable sysctl.conf to prevent ROM interference with tunables
-$bb mount -o rw,remount /system;
-$bb [ -e /system/etc/sysctl.conf ] && $bb mv -f /system/etc/sysctl.conf /system/etc/sysctl.conf.fkbak;
+	$bb mount -o rw,remount /system;
+	$bb [ -e /system/etc/sysctl.conf ] && $bb mv -f /system/etc/sysctl.conf /system/etc/sysctl.conf.fkbak;
 
 # disable the PowerHAL since there is a kernel-side touch boost implemented
-$bb [ -e /system/lib/hw/power.msm8960.so.fkbak ] || $bb cp /system/lib/hw/power.msm8960.so /system/lib/hw/power.msm8960.so.fkbak;
-$bb [ -e /system/lib/hw/power.msm8960.so ] && $bb rm -f /system/lib/hw/power.msm8960.so;
+	$bb [ -e /system/lib/hw/power.msm8960.so.fkbak ] || $bb cp /system/lib/hw/power.msm8960.so /system/lib/hw/power.msm8960.so.fkbak;
+	$bb [ -e /system/lib/hw/power.msm8960.so ] && $bb rm -f /system/lib/hw/power.msm8960.so;
 
 # create and set permissions for /system/etc/init.d if it doesn't already exist
-if [ ! -e /system/etc/init.d ]; then
-  $bb mkdir /system/etc/init.d;
-  $bb chown -R root.root /system/etc/init.d;
-  $bb chmod -R 775 /system/etc/init.d;
-fi;
-$bb mount -o ro,remount /system;
-
+	$bb mkdir /system/etc/init.d;
+	$bb chown -R root.root /system/etc/init.d;
+	$bb chmod -R 775 /system/etc/init.d;
+	$bb mount -o ro,remount /system;
+	echo "[defcon] init.d permissions set" | tee /dev/kmsg
+# Interactive Options
 echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
 echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
+
