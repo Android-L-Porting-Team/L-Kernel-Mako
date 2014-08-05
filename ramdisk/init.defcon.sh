@@ -13,14 +13,22 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 	echo "1" > /sys/module/msm_hotplug/suspend_max_cpus
 	echo "1026000" > /sys/module/msm_hotplug/suspend_max_freq
 
-# set autosmp as default governor and disable all others
-# This can be re-enabled with echo 1
+# Set default hotplug here:
 	echo 1 > /sys/module/autosmp/parameters/enabled
-# enable msm_hotplug
 	echo 0 > /sys/module/msm_hotplug/msm_enabled
-# disable intelli_plug
 	echo 0 > /sys/module/intelli_plug/parameters/intelli_plug_active
 	echo "[defcon] hotplug options set!" | tee /dev/kmsg
+
+# Tweak AutoSMP Hotplug
+	echo "594000" > /sys/kernel/autosmp/conf/cpufreq_down
+	echo "1242000" > /sys/kernel/autosmp/conf/cpufreq_up
+	echo 3 > /sys/kernel/autosmp/conf/cycle_down
+	echo 1 > /sys/kernel/autosmp/conf/cycle_up
+	echo 4 > /sys/kernel/autosmp/conf/max_cpus
+	echo 1 > /sys/kernel/autosmp/conf/min_cpus
+	echo "100" > /sys/kernel/autosmp/conf/delay
+	echo 1 > /sys/kernel/autosmp/conf/scroff_single_core
+	echo "[defcon] autosmp fully optimized!" | tee /dev/kmsg
 
 # Set TCP westwood
 	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
@@ -63,6 +71,11 @@ fi
 	$bb mount -o ro,remount /system;
 	echo "[defcon] init.d permissions set" | tee /dev/kmsg
 # Interactive Options
-echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
-echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
+	echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
+	echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
+
+# GPU Max Clock
+	echo "400000000" > /sys/devices/platform/kgsl-3d0.0/kgsl/kgsl-3d0/max_gpuclk
+	echo "[defcon] GPU Max Clock Set" | tee /dev/kmsg
+
 
