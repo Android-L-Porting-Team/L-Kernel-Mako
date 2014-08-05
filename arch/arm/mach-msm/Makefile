@@ -360,7 +360,6 @@ obj-$(CONFIG_MSM_DCVS) += msm_dcvs_scm.o msm_dcvs.o
 obj-$(CONFIG_MSM_DCVS) += msm_dcvs_scm.o msm_dcvs.o msm_mpdecision.o
 obj-$(CONFIG_MSM_ASMP) += msm_autosmp.o
 obj-$(CONFIG_MSM_HOTPLUG) += msm_hotplug.o
->>>>>>> a3ff8d6... msm: hotplug: Add MSM Hotplug driver
 obj-$(CONFIG_MSM_RUN_QUEUE_STATS) += msm_rq_stats.o
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ) += msm_show_resume_irq.o
 obj-$(CONFIG_BT_MSM_PINTEST)  += btpintest.o
