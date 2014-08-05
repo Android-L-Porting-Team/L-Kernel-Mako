@@ -38,11 +38,10 @@
 #define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(10000)
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
-#define DEF_DOWN_THRESHOLD			(5)
-#define TOUCH_LOAD				(65)
+#define TOUCH_LOAD				(75)
 #define TOUCH_LOAD_THRESHOLD			(10)
 #define TOUCH_LOAD_DURATION			(1100)
-
+#define DEF_DOWN_THRESHOLD			(5)
 /*
  * The polling frequency of this governor depends on the capability of
  * the processor. Default polling frequency is 1000 times the transition
@@ -797,7 +796,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	} else {
 		/* Calculate the next frequency proportional to load */
 		unsigned int freq_next, min_f, max_f;
-
+		
 		min_f = policy->cpuinfo.min_freq;
 		max_f = policy->cpuinfo.max_freq;
 		freq_next = min_f + max_load * (max_f - min_f) / 100;
