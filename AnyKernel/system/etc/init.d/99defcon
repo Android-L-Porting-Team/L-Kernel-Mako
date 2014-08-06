@@ -2,13 +2,6 @@
 bb=busybox
 echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 
-# Turn on Intelli-Thermal
-	stop thermald
-	stop mpdecision
-	echo 1 > /sys/module/msm_thermal/parameters/enabled
-	echo "[defcon] thermald & mpdecision disabled" | tee /dev/kmsg
-	echo "[defcon] Intelli-Thermal Enabled!" | tee /dev/kmsg
-
 # MSM_Hotplug options
 	echo "1" > /sys/module/msm_hotplug/suspend_max_cpus
 	echo "1026000" > /sys/module/msm_hotplug/suspend_max_freq
