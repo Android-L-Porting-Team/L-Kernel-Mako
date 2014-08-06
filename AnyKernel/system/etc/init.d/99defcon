@@ -43,7 +43,7 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
 	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
 	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
-	echo 1 > /sys/devices/system/cpu/cpufreq/intelliactive/boost
+	echo 0 > /sys/devices/system/cpu/cpufreq/intelliactive/boost
 	echo "[defcon] Intelli-Active Enabled with BOOST!" | tee /dev/kmsg
 
 # Set Power Save Settings
