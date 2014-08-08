@@ -1,6 +1,6 @@
-# Inception Extras
+# defcon Extras
 
-service inception-sh /system/bin/sh /init.defcon.sh
+service defcon /system/bin/sh /init.defcon.sh
 	class late_start
 	user root
 	oneshot

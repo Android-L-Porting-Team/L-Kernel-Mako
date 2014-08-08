@@ -16,6 +16,7 @@ version="45u"
 rom="L-Preview"
 variant="mako"
 ramdisk=ramdisk
+#ramdisk=/home/defcon/Desktop/newboot/ramdisk
 config="mako_defconfig"
 kerneltype="zImage"
 ps=2048
