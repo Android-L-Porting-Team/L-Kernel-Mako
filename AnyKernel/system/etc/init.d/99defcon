@@ -20,8 +20,8 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 	echo "[defcon] hotplug options set!" | tee /dev/kmsg
 
 # Tweak AutoSMP Hotplug
-	echo "594000" > /sys/kernel/autosmp/conf/cpufreq_down
-	echo "1026000" > /sys/kernel/autosmp/conf/cpufreq_up
+	echo "972000" > /sys/kernel/autosmp/conf/cpufreq_down
+	echo "1242000" > /sys/kernel/autosmp/conf/cpufreq_up
 	echo 3 > /sys/kernel/autosmp/conf/cycle_down
 	echo 1 > /sys/kernel/autosmp/conf/cycle_up
 	echo 4 > /sys/kernel/autosmp/conf/max_cpus
