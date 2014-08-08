@@ -1,6 +1,11 @@
 #!/system/bin/sh
 bb=busybox
 echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
+# Disable mpdecision & thermald
+	stop thermald
+	stop mpdecision
+	# Test's max temp to 65 before throttling kicks in
+	# echo "65" > /sys/module/msm_thermal/parameters/temp_threshold
 
 # MSM_Hotplug options
 	echo "1" > /sys/module/msm_hotplug/suspend_max_cpus
