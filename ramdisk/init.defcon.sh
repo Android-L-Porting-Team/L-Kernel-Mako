@@ -2,13 +2,6 @@
 bb=busybox
 echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 
-# Turn on Intelli-Thermal
-	stop thermald
-	stop mpdecision
-	echo 1 > /sys/module/msm_thermal/parameters/enabled
-	echo "[defcon] thermald & mpdecision disabled" | tee /dev/kmsg
-	echo "[defcon] Intelli-Thermal Enabled!" | tee /dev/kmsg
-
 # MSM_Hotplug options
 	echo "1" > /sys/module/msm_hotplug/suspend_max_cpus
 	echo "1026000" > /sys/module/msm_hotplug/suspend_max_freq
@@ -21,7 +14,7 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 
 # Tweak AutoSMP Hotplug
 	echo "594000" > /sys/kernel/autosmp/conf/cpufreq_down
-	echo "1242000" > /sys/kernel/autosmp/conf/cpufreq_up
+	echo "1026000" > /sys/kernel/autosmp/conf/cpufreq_up
 	echo 3 > /sys/kernel/autosmp/conf/cycle_down
 	echo 1 > /sys/kernel/autosmp/conf/cycle_up
 	echo 4 > /sys/kernel/autosmp/conf/max_cpus
@@ -33,6 +26,30 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 # Set TCP westwood
 	echo "westwood" > /proc/sys/net/ipv4/tcp_congestion_control
 	echo "[defcon] TCP set: westwood" | tee /dev/kmsg
+
+# Set IntelliActive as default:	
+	echo "intelliactive" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+	echo "intelliactive" > /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
+	echo "intelliactive" > /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+	echo "intelliactive" > /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+	echo "81000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+	echo 0 > /sys/devices/system/cpu/cpufreq/intelliactive/boost
+	echo "[defcon] Intelli-Active Enabled with BOOST!" | tee /dev/kmsg
+
+# Set Power Save Settings
+	echo 1 > /sys/module/pm_8x60/modes/cpu0/wfi/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu0/power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu1/power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu2/power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu3/power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu0/standalone_power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu1/standalone_power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu2/standalone_power_collapse/suspend_enabled
+	echo 1 > /sys/module/pm_8x60/modes/cpu3/standalone_power_collapse/suspend_enabled
+	echo "[defcon] Power saving modes Enabled" | tee /dev/kmsg
 
 # Set IOSched
 	echo "fiops" > /sys/block/mmcblk0/queue/scheduler
@@ -70,6 +87,7 @@ fi
 	$bb chmod -R 775 /system/etc/init.d;
 	$bb mount -o ro,remount /system;
 	echo "[defcon] init.d permissions set" | tee /dev/kmsg
+
 # Interactive Options
 	echo 20000 1300000:40000 1400000:20000 > /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
 	echo 85 1300000:90 1400000:70 > /sys/devices/system/cpu/cpufreq/interactive/target_loads
