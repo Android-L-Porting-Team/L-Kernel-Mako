@@ -2,7 +2,7 @@
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm 3.4.102 Kernel Configuration
 #
-CONFIG_LOCALVERSION="-defcon.kernel-49u"
+CONFIG_LOCALVERSION="-defcon.kernel-49u-r5"
 CONFIG_ARM=y
 CONFIG_ARM_HAS_SG_CHAIN=y
 CONFIG_MIGHT_HAVE_PCI=y
