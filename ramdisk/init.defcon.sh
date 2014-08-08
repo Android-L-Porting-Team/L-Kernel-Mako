@@ -4,6 +4,10 @@ echo "[defcon] Welcome to Ultimate Kernel Series" | tee /dev/kmsg
 # Disable mpdecision & thermald
 	stop thermald
 	stop mpdecision
+	echo 1 > /sys/module/msm_thermal/parameters/enabled
+	echo "[defcon] thermald & mpdecision disabled" | tee /dev/kmsg
+	echo "[defcon] Intelli-Thermal Enabled!" | tee /dev/kmsg
+
 	# Test's max temp to 65 before throttling kicks in
 	# echo "65" > /sys/module/msm_thermal/parameters/temp_threshold
 
